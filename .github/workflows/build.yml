@@ -18,7 +18,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: autogluon-docker
@@ -31,9 +30,13 @@ env:
 jobs:
   version:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     outputs:
       version: ${{ steps.version.outputs.version }}
-      exists: ${{ steps.check.outputs.exists }}
+      images_complete: ${{ steps.images.outputs.complete }}
+      release_exists: ${{ steps.release.outputs.exists }}
     steps:
       - uses: actions/checkout@v7
       - name: Resolve stable version
@@ -43,8 +46,8 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -n "$REQUESTED_VERSION" ]]; then
-            [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-              echo "Version must be a stable x.y.z release" >&2
+            [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.post[0-9]+)?$ ]] || {
+              echo "Version must be a stable x.y.z or x.y.z.postN release" >&2
               exit 1
             }
             VERSION="$REQUESTED_VERSION"
@@ -59,17 +62,31 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Check existing versioned images
-        id: check
+      - name: Check required image tags
+        id: images
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          CPU=0
-          GPU=0
-          docker manifest inspect "$IMAGE:${VERSION}-cpu-py312" >/dev/null 2>&1 && CPU=1 || true
-          docker manifest inspect "$IMAGE:${VERSION}-gpu-cu132-py312" >/dev/null 2>&1 && GPU=1 || true
-          if [[ "$CPU" == 1 && "$GPU" == 1 ]]; then
+          COMPLETE=true
+          for TAG in \
+            "${VERSION}-cpu-py312" \
+            "${VERSION}-gpu-cu132-py312" \
+            latest-cpu-py312 \
+            latest-gpu-cu132-py312; do
+            if ! docker manifest inspect "$IMAGE:$TAG" >/dev/null 2>&1; then
+              COMPLETE=false
+              echo "Missing image tag: $IMAGE:$TAG"
+            fi
+          done
+          echo "complete=$COMPLETE" >> "$GITHUB_OUTPUT"
+      - name: Check GitHub Release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "autogluon-${VERSION}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -77,8 +94,12 @@ jobs:
 
   build:
     needs: version
-    if: needs.version.outputs.exists != 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: needs.version.outputs.images_complete != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -116,8 +137,11 @@ jobs:
 
   smoke:
     needs: [version, build]
-    if: success()
+    if: ${{ always() && needs.version.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') && (needs.version.outputs.images_complete != 'true' || needs.version.outputs.release_exists != 'true') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      packages: read
     strategy:
       fail-fast: false
       matrix:
@@ -148,8 +172,9 @@ jobs:
 
   release:
     needs: [version, build, smoke]
-    if: ${{ needs.version.outputs.exists != 'true' && needs.build.result == 'success' && needs.smoke.result == 'success' }}
+    if: ${{ always() && needs.version.result == 'success' && needs.version.outputs.release_exists != 'true' && needs.smoke.result == 'success' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: write
     steps:

@@ -7,15 +7,22 @@ import urllib.request
 
 
 URL = "https://pypi.org/pypi/autogluon/json"
-STABLE = re.compile(r"^\d+\.\d+\.\d+(?:\.post\d+)?$")
+STABLE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:\.post(\d+))?$")
 
 
 with urllib.request.urlopen(URL, timeout=30) as response:
     data = json.load(response)
 
-version = data["info"]["version"]
-files = data["releases"].get(version, [])
-if not STABLE.fullmatch(version) or not files or all(item["yanked"] for item in files):
-    raise SystemExit(f"PyPI did not report a usable stable release: {version}")
+candidates = []
+for version, files in data["releases"].items():
+    match = STABLE.fullmatch(version)
+    if not match or not files or all(item.get("yanked", False) for item in files):
+        continue
+    major, minor, patch, post = match.groups()
+    key = (int(major), int(minor), int(patch), -1 if post is None else int(post))
+    candidates.append((key, version))
 
-print(version)
+if not candidates:
+    raise SystemExit("PyPI did not report a usable stable AutoGluon release")
+
+print(max(candidates)[1])
