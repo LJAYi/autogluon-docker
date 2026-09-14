@@ -6,13 +6,15 @@ This project is not affiliated with or endorsed by AutoGluon or Amazon Web Servi
 ## Images
 
 ```text
-ghcr.io/ljayi/autogluon-docker:1.6.1-cpu-py312
-ghcr.io/ljayi/autogluon-docker:1.6.1-gpu-cu132-py312
+ghcr.io/ljayi/autogluon-docker:1.6.2-cpu-py312
+ghcr.io/ljayi/autogluon-docker:1.6.2-gpu-cu132-py312
 ```
 
 Moving aliases are also published as `latest-cpu-py312` and
 `latest-gpu-cu132-py312`. Use a versioned tag for reproducible jobs. Images
 currently target `linux/amd64` and use Python 3.12.
+The build resolves compatible Torch packages from the CPU or CUDA 13.2 PyTorch
+index for each AutoGluon release.
 
 ## Run
 
@@ -36,7 +38,7 @@ Pull a versioned image once on a login node:
 ```bash
 module load apptainer
 apptainer pull autogluon-gpu.sif \
-  docker://ghcr.io/ljayi/autogluon-docker:1.6.1-gpu-cu132-py312
+  docker://ghcr.io/ljayi/autogluon-docker:1.6.2-gpu-cu132-py312
 ```
 
 Run it on a GPU node:

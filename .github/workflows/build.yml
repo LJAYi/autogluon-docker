@@ -36,6 +36,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       images_complete: ${{ steps.images.outputs.complete }}
+      missing_matrix: ${{ steps.images.outputs.matrix }}
       release_exists: ${{ steps.release.outputs.exists }}
     steps:
       - uses: actions/checkout@v7
@@ -68,18 +69,35 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
+
+          MATRIX='{"include":[]}'
           COMPLETE=true
-          for TAG in \
-            "${VERSION}-cpu-py312" \
-            "${VERSION}-gpu-cu132-py312" \
-            latest-cpu-py312 \
-            latest-gpu-cu132-py312; do
+          CPU_COMPLETE=true
+          for TAG in "${VERSION}-cpu-py312" latest-cpu-py312; do
             if ! docker manifest inspect "$IMAGE:$TAG" >/dev/null 2>&1; then
-              COMPLETE=false
+              CPU_COMPLETE=false
               echo "Missing image tag: $IMAGE:$TAG"
             fi
           done
+          if [[ "$CPU_COMPLETE" != true ]]; then
+            COMPLETE=false
+            MATRIX="$(jq -c '.include += [{"variant":"cpu","suffix":"cpu-py312","latest":"latest-cpu-py312"}]' <<<"$MATRIX")"
+          fi
+
+          GPU_COMPLETE=true
+          for TAG in "${VERSION}-gpu-cu132-py312" latest-gpu-cu132-py312; do
+            if ! docker manifest inspect "$IMAGE:$TAG" >/dev/null 2>&1; then
+              GPU_COMPLETE=false
+              echo "Missing image tag: $IMAGE:$TAG"
+            fi
+          done
+          if [[ "$GPU_COMPLETE" != true ]]; then
+            COMPLETE=false
+            MATRIX="$(jq -c '.include += [{"variant":"gpu","suffix":"gpu-cu132-py312","latest":"latest-gpu-cu132-py312"}]' <<<"$MATRIX")"
+          fi
+
           echo "complete=$COMPLETE" >> "$GITHUB_OUTPUT"
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
       - name: Check GitHub Release
         id: release
         env:
@@ -102,14 +120,7 @@ jobs:
       packages: write
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - variant: cpu
-            suffix: cpu-py312
-            latest: latest-cpu-py312
-          - variant: gpu
-            suffix: gpu-cu132-py312
-            latest: latest-gpu-cu132-py312
+      matrix: ${{ fromJSON(needs.version.outputs.missing_matrix) }}
     steps:
       - uses: actions/checkout@v7
       - uses: docker/login-action@v4
@@ -127,11 +138,10 @@ jobs:
           build-args: |
             VARIANT=${{ matrix.variant }}
             AUTOGLUON_VERSION=${{ needs.version.outputs.version }}
-            PYTORCH_VERSION=2.13.0
-            TORCHVISION_VERSION=0.28.0
           tags: |
             ${{ env.IMAGE }}:${{ needs.version.outputs.version }}-${{ matrix.suffix }}
             ${{ env.IMAGE }}:${{ matrix.latest }}
+          provenance: false
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
 

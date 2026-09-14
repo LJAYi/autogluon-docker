@@ -2,10 +2,8 @@
 
 ARG VARIANT=cpu
 
-FROM python:3.12-slim-bookworm AS cpu
-ARG AUTOGLUON_VERSION=1.6.1
-ARG PYTORCH_VERSION=2.13.0
-ARG TORCHVISION_VERSION=0.28.0
+FROM python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254 AS cpu
+ARG AUTOGLUON_VERSION=1.6.2
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
@@ -28,16 +26,11 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN python -m pip install --upgrade pip "setuptools<82" wheel \
     && python -m pip install \
         --index-url https://download.pytorch.org/whl/cpu \
-        "torch==${PYTORCH_VERSION}" \
-        "torchvision==${TORCHVISION_VERSION}" \
-    && python -m pip install \
-        --extra-index-url https://download.pytorch.org/whl/cpu \
+        --extra-index-url https://pypi.org/simple \
         "autogluon==${AUTOGLUON_VERSION}"
 
-FROM nvidia/cuda:13.2.1-cudnn-runtime-ubuntu24.04 AS gpu
-ARG AUTOGLUON_VERSION=1.6.1
-ARG PYTORCH_VERSION=2.13.0
-ARG TORCHVISION_VERSION=0.28.0
+FROM nvidia/cuda:13.2.1-cudnn-runtime-ubuntu24.04@sha256:1c0c68dbf3258d32b446a02cb4be05c8478b65d320d7856ad33c4bbdf898ca86 AS gpu
+ARG AUTOGLUON_VERSION=1.6.2
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -65,14 +58,11 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN python -m pip install --upgrade pip "setuptools<82" wheel \
     && python -m pip install \
         --index-url https://download.pytorch.org/whl/cu132 \
-        "torch==${PYTORCH_VERSION}" \
-        "torchvision==${TORCHVISION_VERSION}" \
-    && python -m pip install \
-        --extra-index-url https://download.pytorch.org/whl/cu132 \
+        --extra-index-url https://pypi.org/simple \
         "autogluon==${AUTOGLUON_VERSION}"
 
 FROM ${VARIANT} AS final
-ARG AUTOGLUON_VERSION=1.6.1
+ARG AUTOGLUON_VERSION=1.6.2
 ARG VARIANT=cpu
 
 ENV PYTHONUNBUFFERED=1 \
