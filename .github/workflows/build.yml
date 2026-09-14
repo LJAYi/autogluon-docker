@@ -146,43 +146,31 @@ jobs:
             "$IMAGE:$VERSION-${{ matrix.suffix }}" \
             python /tests/smoke-test.py
 
-  notify-success:
+  release:
     needs: [version, build, smoke]
-    if: ${{ needs.build.result == 'success' && needs.smoke.result == 'success' }}
+    if: ${{ needs.version.outputs.exists != 'true' && needs.build.result == 'success' && needs.smoke.result == 'success' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Check email configuration
-        id: config
+      - name: Create GitHub Release
         env:
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          if [[ -z "$SMTP_HOST" || -z "$SMTP_PORT" || -z "$SMTP_USERNAME" || -z "$SMTP_PASSWORD" || -z "$NOTIFY_EMAIL" ]]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Success email skipped: configure SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, and NOTIFY_EMAIL repository secrets."
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
+          TAG="autogluon-${VERSION}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; nothing to do."
+            exit 0
           fi
-      - name: Send success email
-        if: steps.config.outputs.configured == 'true'
-        uses: dawidd6/action-send-mail@v6
-        with:
-          server_address: ${{ secrets.SMTP_HOST }}
-          server_port: ${{ secrets.SMTP_PORT }}
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "[AutoGluon Docker] Build succeeded: ${{ needs.version.outputs.version }}"
-          to: ${{ secrets.NOTIFY_EMAIL }}
-          from: "AutoGluon Docker <${{ secrets.SMTP_USERNAME }}>"
-          secure: true
-          body: |
-            AutoGluon Docker 构建成功。
+          cat > release-notes.md <<EOF
+          AutoGluon ${VERSION} CPU/GPU images passed build and smoke tests.
 
-            AutoGluon: ${{ needs.version.outputs.version }}
-            CPU image: ${{ env.IMAGE }}:${{ needs.version.outputs.version }}-cpu-py312
-            GPU image: ${{ env.IMAGE }}:${{ needs.version.outputs.version }}-gpu-cu132-py312
-            Workflow: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CPU: ${IMAGE}:${VERSION}-cpu-py312
+          GPU: ${IMAGE}:${VERSION}-gpu-cu132-py312
+          EOF
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
+            --notes-file release-notes.md
