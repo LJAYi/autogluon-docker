@@ -3,6 +3,16 @@
 Unofficial, community-maintained AutoGluon images for CPU and GPU workloads.
 This project is not affiliated with or endorsed by AutoGluon or Amazon Web Services.
 
+## Upstream
+
+This repository packages the upstream [AutoGluon](https://github.com/autogluon/autogluon)
+project into unofficial CPU and GPU Docker images.
+
+- Documentation: https://auto.gluon.ai/
+- PyPI: https://pypi.org/project/autogluon/
+
+This project is not affiliated with or endorsed by AutoGluon or Amazon Web Services.
+
 ## Images
 
 ```text
