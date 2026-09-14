@@ -65,9 +65,6 @@ FROM ${VARIANT} AS final
 ARG AUTOGLUON_VERSION=1.6.2
 ARG VARIANT=cpu
 
-ENV PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
-
 LABEL org.opencontainers.image.title="AutoGluon Docker" \
       org.opencontainers.image.description="Unofficial AutoGluon ${VARIANT} image" \
       org.opencontainers.image.version="${AUTOGLUON_VERSION}"

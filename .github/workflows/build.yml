@@ -9,12 +9,6 @@ on:
         type: string
   schedule:
     - cron: "23 3 * * *"
-  push:
-    branches: [main]
-    paths:
-      - Dockerfile
-      - scripts/**
-      - .github/workflows/build.yml
 
 permissions:
   contents: read
@@ -72,25 +66,55 @@ jobs:
 
           MATRIX='{"include":[]}'
           COMPLETE=true
-          CPU_COMPLETE=true
-          for TAG in "${VERSION}-cpu-py312" latest-cpu-py312; do
-            if ! docker manifest inspect "$IMAGE:$TAG" >/dev/null 2>&1; then
-              CPU_COMPLETE=false
-              echo "Missing image tag: $IMAGE:$TAG"
+          manifest_digest() {
+            local tag="$1"
+            local output
+            if ! output="$(docker buildx imagetools inspect --format '{{json .Manifest}}' "$IMAGE:$tag" 2>&1)"; then
+              if grep -Eqi 'manifest unknown|not found|no such manifest' <<<"$output"; then
+                echo "Missing image tag: $IMAGE:$tag" >&2
+                return 2
+              fi
+              echo "$output" >&2
+              return 1
             fi
-          done
+            jq -er '.digest' <<<"$output"
+          }
+
+          check_variant() {
+            local suffix="$1"
+            local latest="$2"
+            local version_digest latest_digest
+
+            version_digest="$(manifest_digest "${VERSION}-${suffix}")" || return $?
+            latest_digest="$(manifest_digest "$latest")" || return $?
+
+            if [[ "$version_digest" != "$latest_digest" ]]; then
+              echo "Digest mismatch: $IMAGE:${VERSION}-${suffix} ($version_digest) != $IMAGE:$latest ($latest_digest)"
+              return 2
+            fi
+          }
+
+          CPU_COMPLETE=true
+          if check_variant "cpu-py312" "latest-cpu-py312"; then
+            :
+          else
+            status=$?
+            [[ "$status" -eq 2 ]] || exit "$status"
+            CPU_COMPLETE=false
+          fi
           if [[ "$CPU_COMPLETE" != true ]]; then
             COMPLETE=false
             MATRIX="$(jq -c '.include += [{"variant":"cpu","suffix":"cpu-py312","latest":"latest-cpu-py312"}]' <<<"$MATRIX")"
           fi
 
           GPU_COMPLETE=true
-          for TAG in "${VERSION}-gpu-cu132-py312" latest-gpu-cu132-py312; do
-            if ! docker manifest inspect "$IMAGE:$TAG" >/dev/null 2>&1; then
-              GPU_COMPLETE=false
-              echo "Missing image tag: $IMAGE:$TAG"
-            fi
-          done
+          if check_variant "gpu-cu132-py312" "latest-gpu-cu132-py312"; then
+            :
+          else
+            status=$?
+            [[ "$status" -eq 2 ]] || exit "$status"
+            GPU_COMPLETE=false
+          fi
           if [[ "$GPU_COMPLETE" != true ]]; then
             COMPLETE=false
             MATRIX="$(jq -c '.include += [{"variant":"gpu","suffix":"gpu-cu132-py312","latest":"latest-gpu-cu132-py312"}]' <<<"$MATRIX")"
@@ -132,8 +156,6 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile
-          target: final
           push: true
           build-args: |
             VARIANT=${{ matrix.variant }}

@@ -45,7 +45,7 @@ Run it on a GPU node:
 
 ```bash
 srun --partition=gpu --gres=gpu:1 --cpus-per-task=8 --mem=32G \
-  apptainer exec --nv --bind "$PWD:/workspace" --pwd /workspace \
+  apptainer exec --cleanenv --nv --bind "$SLURM_SUBMIT_DIR:/workspace" --pwd /workspace \
   autogluon-gpu.sif python train.py
 ```
 

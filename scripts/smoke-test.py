@@ -4,7 +4,6 @@ import os
 import sys
 from importlib.metadata import version
 
-import autogluon
 import torch
 from autogluon.tabular import TabularPredictor
 
@@ -30,5 +29,4 @@ elif expected_cuda:
         f"expected CUDA {expected_cuda}, got {torch.version.cuda}"
     )
 
-assert TabularPredictor is not None
 print("AutoGluon TabularPredictor import: OK")
